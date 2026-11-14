@@ -149,11 +149,7 @@ class Tauric:
         import httpx
 
         if not self._key:
-            raise ToolError(
-                "TAURIC_API_KEY is not set. Market data needs it: register with Tauric, then "
-                "`export TAURIC_API_KEY=…` or run "
-                "`trading-r1 secrets set TAURIC_API_KEY`"
-            )
+            return self
         data = runtime_config().data
         timeout = httpx.Timeout(data.read_timeout_s, connect=data.connect_timeout_s)
         self._client = httpx.AsyncClient(
@@ -162,11 +158,22 @@ class Tauric:
         return self
 
     async def __aexit__(self, *exc: object) -> None:
-        await self._client.aclose()
+        if self._client is not None:
+            await self._client.aclose()
 
     async def get(self, path: str, **params: Any) -> dict[str, Any]:
         """GET `path` (under `/v1`) with the non-None params; the JSON body."""
         query = {k: v for k, v in params.items() if v is not None}
+        if not self._key:
+            from trading_r1.tools.data.fallback import dispatch
+
+            fkey = key_for("fallback", "public", path, query)
+            if (kept := REUSE.get(fkey)) is not None:
+                return self._keep_limits(kept, dated="end" in query or "date" in query)
+            body = await dispatch("GET", path, query)
+            ttl = body.pop("_max_age", 60) if isinstance(body, dict) else 0
+            REUSE.put(fkey, body, int(ttl))
+            return self._keep_limits(body, dated="end" in query or "date" in query)
         key = key_for(self._base, self._key, path, query)
         if (kept := REUSE.get(key)) is not None:
             return self._keep_limits(kept, dated="end" in query or "date" in query)
@@ -179,6 +186,10 @@ class Tauric:
 
     async def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         """POST a read-only batch request (`/quotes`); the JSON body. Never reused."""
+        if not self._key:
+            from trading_r1.tools.data.fallback import dispatch
+
+            return self._keep_limits(await dispatch("POST", path, body))
         return self._keep_limits((await self._send("POST", path, json=body))[1])
 
     def _keep_limits(self, body: Any, dated: bool = False) -> Any:
