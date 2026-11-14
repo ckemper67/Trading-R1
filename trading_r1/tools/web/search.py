@@ -21,7 +21,7 @@ from trading_r1.contract.spec import Output, Provenance, Result, ToolError, Tool
 from trading_r1.contract.units import Code, Count, Text
 from trading_r1.state.runtime_config import runtime_config
 from trading_r1.tools.web.cache import FetchCache
-from trading_r1.tools.web.search_engines import DdgsEngine, SearchEngine
+from trading_r1.tools.web.search_engines import SearchEngine, default_search_engine
 from trading_r1.tools.web.visit_fetch import Fetcher
 
 _DEFAULT_MAX_RESULTS = 8
@@ -83,6 +83,8 @@ async def _validate(candidates: list[dict], validator: Fetcher, cache: FetchCach
     sem = asyncio.Semaphore(runtime_config().fetch.validate_concurrency)
 
     async def check(c: dict) -> dict | None:
+        if cache.has_content(c["url"]):
+            return c
         async with sem:
             page = await validator(c["url"])
         if page.ok and len(page.text) >= _MIN_CHARS:
@@ -104,7 +106,7 @@ def build_search_spec(
     """Build the per-run `search` tool bound to a cache + engine. When
     ``validator`` is given, results are pre-flight-validated (over-fetch, drop
     unfetchable, warm cache); without it, raw engine results are returned."""
-    engine = engine or DdgsEngine()
+    engine = engine or default_search_engine()
 
     async def handler(req: SearchRequest) -> Result:
         per = req.limit or default_max_results
@@ -133,6 +135,8 @@ def build_search_spec(
                     continue
                 seen.add(h.url)
                 cache.set_title(h.url, h.title)
+                if getattr(h, "text", None) and len(h.text.strip()) >= _MIN_CHARS:
+                    cache.set_content(h.url, h.text.strip())
                 candidates.append(
                     {"title": h.title, "url": h.url, "snippet": h.snippet, "query": q}
                 )

@@ -239,9 +239,15 @@ def supplied_provider(
     return min(supplied, key=lambda b: b.auto or 0, default=None)
 
 
+_SERVICE_KEYS: dict[str, str] = {
+    "EXA_API_KEY": "Exa",
+}
+
+
 def model_keys() -> dict[str, str]:
     """Key variable name to the provider's label, in provider order."""
-    return {b.key_env: b.label for b in BUILTIN_PROVIDERS if b.key_env}
+    keys = {b.key_env: b.label for b in BUILTIN_PROVIDERS if b.key_env}
+    return {**keys, **_SERVICE_KEYS}
 
 
 def model_key_names() -> set[str]:

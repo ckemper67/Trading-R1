@@ -176,11 +176,19 @@ def _settled(page: FetchedPage) -> FetchedPage:
 
 async def quick_fetch(url: str, *, timeout: float | None = None) -> FetchedPage:
     """Single-attempt fetch for quick search-result readability validation."""
+    from trading_r1.tools.web.search_engines import get_cached_exa_text
+
+    if cached := get_cached_exa_text(url):
+        return FetchedPage(url=url, text=cached, ok=True)
     return _settled(await _fetch_once(url, timeout or runtime_config().fetch.quick_timeout_s))
 
 
 async def http_fetch(url: str, *, timeout: float | None = None) -> FetchedPage:
     """Default fetcher: HTTP GET -> extracted text, retrying transient failures."""
+    from trading_r1.tools.web.search_engines import exa_fetch_text, get_cached_exa_text
+
+    if cached := get_cached_exa_text(url):
+        return FetchedPage(url=url, text=cached, ok=True)
     page = FetchedPage(url=url, text="", ok=False, error="no attempt")
     fetch = runtime_config().fetch
     for attempt in range(fetch.attempts):
@@ -189,4 +197,11 @@ async def http_fetch(url: str, *, timeout: float | None = None) -> FetchedPage:
             break
         if attempt < fetch.attempts - 1:
             await asyncio.sleep(fetch.backoff_s * (attempt + 1))
-    return _settled(page)
+    settled = _settled(page)
+    if (
+        not settled.ok
+        and settled.error != "not a public address"
+        and (exa_text := await exa_fetch_text(url, timeout=timeout or fetch.timeout_s))
+    ):
+        return FetchedPage(url=url, text=exa_text, ok=True)
+    return settled
