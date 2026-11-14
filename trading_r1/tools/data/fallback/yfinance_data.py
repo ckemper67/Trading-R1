@@ -693,6 +693,11 @@ async def _handle_profile(ticker: str) -> dict[str, Any]:
         "profit_margin": _raw_val(fd.get("profitMargins")),
         "revenue_growth": _raw_val(fd.get("revenueGrowth")),
         "earnings_growth": _raw_val(fd.get("earningsGrowth")),
+        "held_fraction_insiders": _raw_val(ks.get("heldPercentInsiders")),
+        "held_fraction_institutions": _raw_val(ks.get("heldPercentInstitutions")),
+        "shares_short": _raw_val(ks.get("sharesShort")),
+        "days_to_cover": _raw_val(ks.get("shortRatio")),
+        "short_fraction_of_float": _raw_val(ks.get("shortPercentOfFloat")),
     }
 
 
